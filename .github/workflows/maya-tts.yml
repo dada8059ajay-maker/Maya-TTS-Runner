@@ -1,0 +1,96 @@
+name: maya-tts
+on:
+  workflow_dispatch:
+    inputs:
+      lines:
+        description: 'JSON list of {id, voice, text}'
+        required: true
+      dtype:
+        description: 'fp32 or bf16'
+        default: 'fp32'
+      q:
+        description: 'codebooks used (32 = full quality)'
+        default: '32'
+      max_frames:
+        description: 'debug cap on frames per piece (0 = none)'
+        default: '0'
+      tag:
+        description: 'label for the run'
+        default: 'run'
+
+jobs:
+  tts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    env:
+      MAYA_SHA: c6b376868e268551d065c4206193e96257bef4a1
+      HF_HOME: /mnt/hf
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Machine info and swap
+        run: |
+          lscpu | egrep 'Model name|^CPU\(s\)' || true
+          lscpu | grep -o 'avx512_bf16\|amx_bf16\|avx512f\|avx2' | sort -u || true
+          free -g; df -h /mnt /
+          sudo swapoff -a || true
+          sudo fallocate -l 16G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          sudo mkdir -p /mnt/hf && sudo chown -R "$USER" /mnt/hf
+          free -g
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Model code
+        run: |
+          mkdir -p "$RUNNER_TEMP/maya"
+          cd "$RUNNER_TEMP/maya"
+          git init -q .
+          git remote add origin https://github.com/MayaResearch/maya2-native.git
+          git fetch -q --depth 1 origin "$MAYA_SHA"
+          git checkout -q FETCH_HEAD
+          echo "MAYA_SRC=$RUNNER_TEMP/maya" >> "$GITHUB_ENV"
+
+      - name: Cache model weights
+        uses: actions/cache@v4
+        with:
+          path: /mnt/hf
+          key: hf-maya2-native-v1
+
+      - name: Install
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg libsndfile1
+          pip install -q torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install -q "transformers==5.6.2" "tokenizers>=0.22,<0.23" "numpy>=2" scipy soundfile "huggingface_hub>=1" safetensors pyyaml
+          python -c "import torch,transformers;print(torch.__version__,transformers.__version__,torch.get_num_threads())"
+
+      - name: Synthesise
+        env:
+          LINES_JSON: ${{ inputs.lines }}
+          DTYPE: ${{ inputs.dtype }}
+          QV: ${{ inputs.q }}
+          MAXF: ${{ inputs.max_frames }}
+        run: |
+          printf '%s' "$LINES_JSON" > "$RUNNER_TEMP/lines.json"
+          mkdir -p out
+          python -u maya_cpu_tts.py --src "$MAYA_SRC" --lines "$RUNNER_TEMP/lines.json" --out out \
+            --dtype "$DTYPE" --q "$QV" --max-frames "$MAXF"
+
+      - name: Make mp3 and report
+        if: always()
+        run: |
+          cat out/result.json || true
+          for f in out/*.wav; do [ -f "$f" ] && ffmpeg -loglevel error -y -i "$f" -b:a 96k "${f%.wav}.mp3"; done || true
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: maya-tts-out
+          path: out/
+          retention-days: 3
