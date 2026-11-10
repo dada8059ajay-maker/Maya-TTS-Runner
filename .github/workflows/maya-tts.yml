@@ -17,6 +17,12 @@ on:
       tag:
         description: 'label for the run'
         default: 'run'
+      release:
+        description: 'if set, publish the audio as a release with this tag'
+        default: ''
+
+permissions:
+  contents: write
 
 jobs:
   tts:
@@ -87,6 +93,14 @@ jobs:
           cat out/result.json || true
           for f in out/*.wav; do [ -f "$f" ] && ffmpeg -loglevel error -y -i "$f" -b:a 96k "${f%.wav}.mp3"; done || true
           ls -la out
+
+      - name: Publish audio release
+        if: ${{ inputs.release != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REL: ${{ inputs.release }}
+        run: |
+          gh release create "$REL" out/*.wav out/result.json --title "$REL" --notes "audio for $REL" --repo "${{ github.repository }}"
 
       - uses: actions/upload-artifact@v4
         if: always()
