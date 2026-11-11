@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   tts:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 345
     env:
       MAYA_SHA: c6b376868e268551d065c4206193e96257bef4a1
@@ -70,7 +70,8 @@ jobs:
 
       - name: Install
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg libsndfile1
+          for i in 1 2 3; do sudo apt-get update -qq && break || sleep 30; done
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends ffmpeg libsndfile1t64 || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends ffmpeg libsndfile1
           pip install -q torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
           pip install -q "transformers==5.6.2" "tokenizers>=0.22,<0.23" "numpy>=2" scipy soundfile "huggingface_hub>=1" safetensors pyyaml
           python -c "import torch,transformers;print(torch.__version__,transformers.__version__,torch.get_num_threads())"
