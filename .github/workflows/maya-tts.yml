@@ -69,14 +69,14 @@ jobs:
           key: hf-maya2-native-v1
 
       - name: Cache pip packages
-              uses: actions/cache@v4
-              with:
-                path: ~/.cache/pip
-                key: pip-py312-torch-2.8.0-transformers-5.6.2-v1
+          uses: actions/cache@v4
+          with:
+            path: ~/.cache/pip
+            key: pip-py312-torch-2.8.0-transformers-5.6.2-v1
 
       - name: Install
-              timeout-minutes: 25
-              run: |
+          timeout-minutes: 25
+          run: |
           for i in 1 2 3; do sudo apt-get update -qq && break || sleep 30; done
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends ffmpeg libsndfile1t64 || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends ffmpeg libsndfile1
           pip install --timeout 60 --retries 5 torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
